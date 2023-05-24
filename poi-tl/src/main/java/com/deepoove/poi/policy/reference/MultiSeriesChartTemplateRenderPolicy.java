@@ -17,6 +17,7 @@ package com.deepoove.poi.policy.reference;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -52,45 +53,49 @@ public class MultiSeriesChartTemplateRenderPolicy
         int totalSeriesCount = ensureSeriesCount(chart, chartSeries);
         int valueCol = 1;
         List<SeriesRenderData> usedSeriesDatas = new ArrayList<>();
-        for (XDDFChartData chartData : chartSeries) {
-            int orignSize = chartData.getSeriesCount();
-            List<SeriesRenderData> currentSeriesData = null;
-            if (chartSeries.size() <= 1) {
-                // ignore combo type
-                currentSeriesData = data.getSeriesDatas();
-            } else {
-                currentSeriesData = obtainSeriesData(chartData.getClass(), data.getSeriesDatas());
-            }
-            usedSeriesDatas.addAll(currentSeriesData);
-            int currentSeriesSize = currentSeriesData.size();
+		for (int j = 0; j < chartSeries.size(); j++) {
+			XDDFChartData chartData = chartSeries.get(j);
+			int orignSize = chartData.getSeriesCount();
+			List<SeriesRenderData> currentSeriesData = null;
+			if (chartSeries.size() <= 1) {
+				// ignore combo type
+				currentSeriesData = data.getSeriesDatas();
+			} else if (chartSeries.size() == data.getSeriesDatas().size()) {
+				// 解决组合图有次纵坐标轴的双折线图渲染问题
+				currentSeriesData = obtainSeriesData(chartData.getClass(), Collections.singletonList(data.getSeriesDatas().get(j)));
+			} else {
+				currentSeriesData = obtainSeriesData(chartData.getClass(), data.getSeriesDatas());
+			}
+			usedSeriesDatas.addAll(currentSeriesData);
+			int currentSeriesSize = currentSeriesData.size();
 
-            XDDFDataSource<?> categoriesData = null;
-            if (chartData instanceof XDDFScatterChartData) {
-                categoriesData = createNumbericalDataSource(chart, toNumberArray(data.getCategories()), 0);
-            } else {
-                categoriesData = createStringDataSource(chart, data.getCategories(), 0);
-            }
-            for (int i = 0; i < currentSeriesSize; i++) {
-                XDDFNumericalDataSource<? extends Number> valuesData = createNumbericalDataSource(chart,
-                        currentSeriesData.get(i).getValues(), valueCol);
+			XDDFDataSource<?> categoriesData = null;
+			if (chartData instanceof XDDFScatterChartData) {
+				categoriesData = createNumbericalDataSource(chart, toNumberArray(data.getCategories()), 0);
+			} else {
+				categoriesData = createStringDataSource(chart, data.getCategories(), 0);
+			}
+			for (int i = 0; i < currentSeriesSize; i++) {
+				XDDFNumericalDataSource<? extends Number> valuesData = createNumbericalDataSource(chart,
+					currentSeriesData.get(i).getValues(), valueCol);
 
-                XDDFChartData.Series currentSeries = null;
-                if (i < orignSize) {
-                    currentSeries = chartData.getSeries(i);
-                    valuesData.setFormatCode(currentSeries.getValuesData().getFormatCode());
-                    currentSeries.replaceData(categoriesData, valuesData);
-                } else {
-                    // add series, should copy series with style
-                    currentSeries = chartData.addSeries(categoriesData, valuesData);
-                    processNewSeries(chartData, currentSeries);
-                }
-                String name = currentSeriesData.get(i).getName();
-                currentSeries.setTitle(name, chart.setSheetTitle(name, valueCol));
-                valueCol++;
-            }
-            // clear extra series
-            removeExtraSeries(chartData, orignSize, currentSeriesSize);
-        }
+				Series currentSeries = null;
+				if (i < orignSize) {
+					currentSeries = chartData.getSeries(i);
+					valuesData.setFormatCode(currentSeries.getValuesData().getFormatCode());
+					currentSeries.replaceData(categoriesData, valuesData);
+				} else {
+					// add series, should copy series with style
+					currentSeries = chartData.addSeries(categoriesData, valuesData);
+					processNewSeries(chartData, currentSeries);
+				}
+				String name = currentSeriesData.get(i).getName();
+				currentSeries.setTitle(name, chart.setSheetTitle(name, valueCol));
+				valueCol++;
+			}
+			// clear extra series
+			removeExtraSeries(chartData, orignSize, currentSeriesSize);
+		}
 
         XSSFSheet sheet = chart.getWorkbook().getSheetAt(0);
         updateCTTable(sheet, usedSeriesDatas);
